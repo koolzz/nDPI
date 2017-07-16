@@ -31,6 +31,8 @@
 #include "ndpi_protocols.h"
 #include "ndpi_api.h"
 
+#define TIME_STAT 1
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -41,6 +43,9 @@ extern "C" {
   void *ndpi_tsearch(const void *, void**, int (*)(const void *, const void *));
   void ndpi_twalk(const void *, void (*)(const void *, ndpi_VISIT, int, void*), void *user_data);
   void ndpi_tdestroy(void *vrootp, void (*freefct)(void *));
+#ifdef TIME_STAT
+  void print_stat(void);
+#endif
 
   int NDPI_BITMASK_COMPARE(NDPI_PROTOCOL_BITMASK a, NDPI_PROTOCOL_BITMASK b);
   int NDPI_BITMASK_IS_EMPTY(NDPI_PROTOCOL_BITMASK a);

@@ -36,6 +36,12 @@
 #include "third_party/include/ndpi_patricia.h"
 #include "third_party/src/ndpi_patricia.c"
 
+#define TIME_STAT 1
+#ifdef TIME_STAT
+#include "app_stat.h"
+struct stat_counter stat_flow, stat_tcp_flow;
+
+#endif
 
 /* implementation of the punycode check function */
 int check_punycode_string(char * buffer , int len)
@@ -1626,7 +1632,7 @@ static void ndpi_init_protocol_defaults(struct ndpi_detection_module_struct *ndp
 			    no_master, "TINC", NDPI_PROTOCOL_CATEGORY_VPN,
 			    ndpi_build_default_ports(ports_a, 655, 0, 0, 0, 0) /* TCP */,
 			    ndpi_build_default_ports(ports_b, 655, 0, 0, 0, 0) /* UDP */);
-    
+
 /* To be removed as soon as we define new protocols */
     ndpi_init_placeholder_proto(ndpi_mod, ports_a, ports_b, no_master, NDPI_PROTOCOL_FREE_224);
 
@@ -2291,11 +2297,24 @@ void ndpi_set_bitmask_protocol_detection( char * label,
   }
 }
 
+void print_stat (){
+        printf( "flow: (%4lu, %4lu), "
+                "tcp_flow: (%4lu, %4lu)\n",
+        GetAverageStat(&stat_flow), stat_flow,
+        GetAverageStat(&stat_tcp_flow), stat_tcp_flow.max);
+
+  InitStatCounter(&stat_flow);
+  InitStatCounter(&stat_tcp_flow);
+
+}
+
 /* ******************************************************************** */
 
 void ndpi_set_protocol_detection_bitmask2(struct ndpi_detection_module_struct *ndpi_struct,
 					  const NDPI_PROTOCOL_BITMASK * dbm)
 {
+  InitStatCounter(&stat_flow);
+  InitStatCounter(&stat_tcp_flow);
   NDPI_PROTOCOL_BITMASK detection_bitmask_local;
   NDPI_PROTOCOL_BITMASK *detection_bitmask = &detection_bitmask_local;
   u_int32_t a = 0;
@@ -3364,8 +3383,16 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 void check_ndpi_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 			  struct ndpi_flow_struct *flow,
 			  NDPI_SELECTION_BITMASK_PROTOCOL_SIZE *ndpi_selection_packet) {
-  if(flow->packet.tcp != NULL)
-    check_ndpi_tcp_flow_func(ndpi_struct, flow, ndpi_selection_packet);
+  if(flow->packet.tcp != NULL){
+#if TIME_STAT
+
+        unsigned long long start_tsc = rdtscll();
+#endif   
+        check_ndpi_tcp_flow_func(ndpi_struct, flow, ndpi_selection_packet);
+#if TIME_STAT
+UpdateStatCounter(&stat_tcp_flow, rdtscll() - start_tsc);
+#endif
+}
   else if(flow->packet.udp != NULL)
     check_ndpi_udp_flow_func(ndpi_struct, flow, ndpi_selection_packet);
   else
@@ -3547,9 +3574,13 @@ ndpi_protocol ndpi_detection_process_packet(struct ndpi_detection_module_struct 
       }
     }
   }
-
+#if TIME_STAT
+unsigned long long start_tsc = rdtscll();
+#endif
   check_ndpi_flow_func(ndpi_struct, flow, &ndpi_selection_packet);
-
+#if TIME_STAT
+        UpdateStatCounter(&stat_flow, rdtscll() - start_tsc);
+#endif
   a = flow->packet.detected_protocol_stack[0];
   if(NDPI_COMPARE_PROTOCOL_TO_BITMASK(ndpi_struct->detection_bitmask, a) == 0)
     a = NDPI_PROTOCOL_UNKNOWN;
