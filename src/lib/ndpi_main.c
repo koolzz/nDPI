@@ -39,7 +39,7 @@
 #define TIME_STAT 1
 #ifdef TIME_STAT
 #include "app_stat.h"
-struct stat_counter stat_flow, stat_tcp_flow;
+struct stat_counter stat_flow, stat_tcp_flow, stat_calb_tcp;
 
 #endif
 
@@ -2299,8 +2299,10 @@ void ndpi_set_bitmask_protocol_detection( char * label,
 
 void print_stat (){
         printf( "flow: (%4lu, %4lu), "
-                "tcp_flow: (%4lu, %4lu)\n",
+                "tcp_flow: (%4lu, %4lu)"
+                "cb_payld: (%4lu, %4lu)\n",
         GetAverageStat(&stat_flow), stat_flow,
+        GetAverageStat(&stat_calb_tcp), stat_calb_tcp.max,
         GetAverageStat(&stat_tcp_flow), stat_tcp_flow.max);
 
   InitStatCounter(&stat_flow);
@@ -3338,8 +3340,14 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 				   ndpi_struct->callback_buffer_tcp_payload[a].excluded_protocol_bitmask) == 0
 	   && NDPI_BITMASK_COMPARE(ndpi_struct->callback_buffer_tcp_payload[a].detection_bitmask,
 				   detection_bitmask) != 0) {
-	  ndpi_struct->callback_buffer_tcp_payload[a].func(ndpi_struct, flow);
+#if TIME_STAT
 
+        unsigned long long start_tsc = rdtscll();
+#endif
+ndpi_struct->callback_buffer_tcp_payload[a].func(ndpi_struct, flow);
+#if TIME_STAT
+        UpdateStatCounter(&stat_calb_tcp, rdtscll() - start_tsc);
+#endif
 
 	  if(flow->detected_protocol_stack[0] != NDPI_PROTOCOL_UNKNOWN)
 	    break; /* Stop after detecting the first protocol */
