@@ -3348,14 +3348,14 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 	   && NDPI_BITMASK_COMPARE(ndpi_struct->callback_buffer_tcp_payload[a].detection_bitmask,
 				   detection_bitmask) != 0) {
 #if TIME_STAT
-
         unsigned long long start_tsc = rdtscll();
 #endif
 ndpi_struct->callback_buffer_tcp_payload[a].func(ndpi_struct, flow);
 #if TIME_STAT
+        if (a == 0)
         UpdateStatCounter(&stat_calb_tcp, rdtscll() - start_tsc);
 #endif
-
+        
 	  if(flow->detected_protocol_stack[0] != NDPI_PROTOCOL_UNKNOWN)
 	    break; /* Stop after detecting the first protocol */
 	}
