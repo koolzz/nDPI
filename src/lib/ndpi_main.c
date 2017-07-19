@@ -26,6 +26,8 @@
 #include "ahocorasick.h"
 #include "ndpi_api.h"
 #include "../../config.h"
+#include <inttypes.h>
+
 
 #include <time.h>
 #ifndef WIN32
@@ -40,7 +42,7 @@
 #ifdef TIME_STAT
 #include "app_stat.h"
 struct stat_counter stat_flow, stat_tcp_flow, stat_calb_tcp;
-
+uint64_t search_http_tcp = 0, check_http_tcp = 0;
 #endif
 
 /* implementation of the punycode check function */
@@ -2300,13 +2302,18 @@ void ndpi_set_bitmask_protocol_detection( char * label,
 void print_stat (){
         printf( "flow: (%4lu, %4lu), "
                 "tcp_flow: (%4lu, %4lu)"
-                "cb_payld: (%4lu, %4lu)\n",
+                "cb_payld: (%4lu, %4lu) ",
         GetAverageStat(&stat_flow), stat_flow,
         GetAverageStat(&stat_calb_tcp), stat_calb_tcp.max,
         GetAverageStat(&stat_tcp_flow), stat_tcp_flow.max);
 
-  InitStatCounter(&stat_flow);
-  InitStatCounter(&stat_tcp_flow);
+        printf("search_tcp %"PRIu64" ",search_http_tcp);
+        printf("check_tcp %"PRIu64"\n",check_http_tcp);
+
+        InitStatCounter(&stat_flow);
+        InitStatCounter(&stat_tcp_flow);
+        search_http_tcp = 0;
+        check_http_tcp = 0;
 
 }
 
