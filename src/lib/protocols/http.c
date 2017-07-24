@@ -26,6 +26,7 @@
 #define TIME_STAT 1
 #if TIME_STAT
 extern uint64_t search_http_tcp,check_http_tcp;
+extern uint64_t trigger;
 #endif
 
 /* global variables used for 1kxun protocol and iqiyi service */
@@ -541,7 +542,7 @@ static void http_bitmask_exclude(struct ndpi_flow_struct *flow)
 static void ndpi_check_http_tcp(struct ndpi_detection_module_struct *ndpi_struct,
 				struct ndpi_flow_struct *flow) {
 #if TIME_STAT
-check_http_tcp++;
+//check_http_tcp++;
 #endif
   struct ndpi_packet_struct *packet = &flow->packet;
   u_int16_t filename_start;
@@ -820,7 +821,8 @@ check_http_tcp++;
 void ndpi_search_http_tcp(struct ndpi_detection_module_struct *ndpi_struct,
 			  struct ndpi_flow_struct *flow) {
 #if TIME_STAT
-search_http_tcp++;
+trigger = 1;
+//search_http_tcp++;
 #endif
   struct ndpi_packet_struct *packet = &flow->packet;
 

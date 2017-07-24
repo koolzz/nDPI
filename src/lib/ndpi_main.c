@@ -41,8 +41,15 @@
 #define TIME_STAT 1
 #ifdef TIME_STAT
 #include "app_stat.h"
-struct stat_counter stat_flow, stat_tcp_flow, stat_calb_tcp;
+#define ONLY_HTTP 1
+#define DBG_PRINT 0
+struct stat_counter stat_flow, stat_tcp_flow, 
+        stat_proto_tcp, stat_proto_nop_tcp,
+        stat_calb_tcp, stat_calb_nop_tcp;
 uint64_t search_http_tcp = 0, check_http_tcp = 0;
+uint64_t trigger = 0;
+uint64_t test_cnt;
+
 #endif
 
 /* implementation of the punycode check function */
@@ -2300,21 +2307,47 @@ void ndpi_set_bitmask_protocol_detection( char * label,
 }
 
 void print_stat (){
-        printf( "flow: (%4lu, %4lu), "
-                "tcp_flow: (%4lu, %4lu)"
-                "cb_payld: (%4lu, %4lu) ",
-        GetAverageStat(&stat_flow), stat_flow,
-        GetAverageStat(&stat_calb_tcp), stat_calb_tcp.max,
-        GetAverageStat(&stat_tcp_flow), stat_tcp_flow.max);
+        /*
+        printf( "(avg, max, cnt) "
+                "flow: (%4lu, %4lu, %4lu), "
+                "tcp_flow: (%4lu, %4lu, %4lu) "
+                "proto_pld: (%4lu, %4lu, %4lu) "
+                "cb_pld: (%4lu, %4lu, %4lu) "
+                "proto_no_pld: (%4lu, %4lu, %4lu) "
+                "cb_no_pld: (%4lu, %4lu, %4lu)\n",
+        GetAverageStat(&stat_flow), stat_flow.max, stat_flow.cnt,
+        GetAverageStat(&stat_tcp_flow), stat_tcp_flow.max, stat_tcp_flow.cnt,
+        GetAverageStat(&stat_proto_tcp), stat_proto_tcp.max, stat_proto_tcp.cnt,
+        GetAverageStat(&stat_calb_tcp), stat_calb_tcp.max, stat_calb_tcp.cnt,
+        GetAverageStat(&stat_proto_nop_tcp), stat_proto_nop_tcp.max, stat_proto_nop_tcp.cnt,
+        GetAverageStat(&stat_calb_nop_tcp), stat_calb_nop_tcp.max, stat_calb_nop_tcp.cnt);
+        */
 
-        printf("search_tcp %"PRIu64" ",search_http_tcp);
-        printf("check_tcp %"PRIu64"\n",check_http_tcp);
-
+        printf( "%lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu\n",
+        GetAverageStat(&stat_flow),
+        GetAverageStat(&stat_tcp_flow),
+        GetAverageStat(&stat_proto_tcp),
+        GetAverageStat(&stat_calb_tcp),
+        GetAverageStat(&stat_proto_nop_tcp),
+        GetAverageStat(&stat_calb_nop_tcp),
+        stat_flow.cnt,
+        stat_tcp_flow.cnt,
+        stat_proto_tcp.cnt,
+        stat_calb_tcp.cnt,
+        stat_proto_nop_tcp.cnt,
+        stat_calb_nop_tcp.cnt);
+        //printf("search_tcp %"PRIu64" ",search_http_tcp);
+        //printf("check_tcp %"PRIu64"\n",check_http_tcp);
+        /*
         InitStatCounter(&stat_flow);
         InitStatCounter(&stat_tcp_flow);
+        InitStatCounter(&stat_proto_tcp);
+        InitStatCounter(&stat_calb_tcp);
+        InitStatCounter(&stat_proto_nop_tcp);
+        InitStatCounter(&stat_calb_nop_tcp);
         search_http_tcp = 0;
         check_http_tcp = 0;
-
+        */
 }
 
 /* ******************************************************************** */
@@ -2322,8 +2355,17 @@ void print_stat (){
 void ndpi_set_protocol_detection_bitmask2(struct ndpi_detection_module_struct *ndpi_struct,
 					  const NDPI_PROTOCOL_BITMASK * dbm)
 {
-  InitStatCounter(&stat_flow);
-  InitStatCounter(&stat_tcp_flow);
+
+        InitStatCounter(&stat_flow);
+        InitStatCounter(&stat_tcp_flow);
+        InitStatCounter(&stat_proto_tcp);
+        InitStatCounter(&stat_calb_tcp);
+        InitStatCounter(&stat_proto_nop_tcp);
+        InitStatCounter(&stat_calb_nop_tcp);
+        //search_http_tcp = 0;
+        //check_http_tcp = 0;
+
+
   NDPI_PROTOCOL_BITMASK detection_bitmask_local;
   NDPI_PROTOCOL_BITMASK *detection_bitmask = &detection_bitmask_local;
   u_int32_t a = 0;
@@ -3325,6 +3367,17 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
   NDPI_PROTOCOL_BITMASK detection_bitmask;
 
   NDPI_SAVE_AS_BITMASK(detection_bitmask, flow->packet.detected_protocol_stack[0]);
+#if TIME_STAT
+      volatile  unsigned long long start_tsc;
+#endif
+
+#if DBG_PRINT
+        printf("Debug %4lu pkt\n",test_cnt);
+        printf("pkt_len %d proto_id %d guessed_proto_id %d detected_prot_stack %d\n", flow->packet.payload_packet_len, proto_id, flow->guessed_protocol_id, flow->detected_protocol_stack[0]);    
+
+        printf("calb_size_tcp_payl %d calb_size_tcp_no_payl %d\n", ndpi_struct->callback_buffer_size_tcp_payload, ndpi_struct->callback_buffer_size_tcp_no_payload);
+    test_cnt++;
+#endif
 
   if(flow->packet.payload_packet_len != 0) {
     if((proto_id != NDPI_PROTOCOL_UNKNOWN)
@@ -3335,8 +3388,26 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
        && (ndpi_struct->callback_buffer[proto_index].ndpi_selection_bitmask & *ndpi_selection_packet) == ndpi_struct->callback_buffer[proto_index].ndpi_selection_bitmask) {
       if((flow->guessed_protocol_id != NDPI_PROTOCOL_UNKNOWN)
 	 && (ndpi_struct->proto_defaults[flow->guessed_protocol_id].func != NULL))
-	ndpi_struct->proto_defaults[flow->guessed_protocol_id].func(ndpi_struct, flow),
+#if DBG_PRINT
+        printf("proto defauts payload\n");
+#endif
+#if TIME_STAT
+      start_tsc = rdtscll();
+#endif
+
+ndpi_struct->proto_defaults[flow->guessed_protocol_id].func(ndpi_struct, flow),
 	  func = ndpi_struct->proto_defaults[flow->guessed_protocol_id].func;
+
+#if TIME_STAT
+#if ONLY_HTTP
+        if (trigger)
+        UpdateStatCounter(&stat_proto_tcp, rdtscll() - start_tsc);
+#else
+        UpdateStatCounter(&stat_proto_tcp, rdtscll() - start_tsc);
+#endif
+
+#endif
+ 
     }
 
     if(flow->detected_protocol_stack[0] == NDPI_PROTOCOL_UNKNOWN) {
@@ -3347,17 +3418,25 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 				   ndpi_struct->callback_buffer_tcp_payload[a].excluded_protocol_bitmask) == 0
 	   && NDPI_BITMASK_COMPARE(ndpi_struct->callback_buffer_tcp_payload[a].detection_bitmask,
 				   detection_bitmask) != 0) {
+#if DBG_PRINT
+        if (a ==0)
+        printf("callback payload\n");
+#endif
 #if TIME_STAT
-        unsigned long long start_tsc = rdtscll();
+     start_tsc = rdtscll();
 #endif
 ndpi_struct->callback_buffer_tcp_payload[a].func(ndpi_struct, flow);
 #if TIME_STAT
-        if (a == 0)
+    //    if (a == 0)
         UpdateStatCounter(&stat_calb_tcp, rdtscll() - start_tsc);
 #endif
         
-	  if(flow->detected_protocol_stack[0] != NDPI_PROTOCOL_UNKNOWN)
+	  if(flow->detected_protocol_stack[0] != NDPI_PROTOCOL_UNKNOWN){
+#if DBG_PRINT
+                printf("PAYLOAD flow->detected_protocol_stack[%d]  = %d\n",a, flow->detected_protocol_stack[a]);
+#endif
 	    break; /* Stop after detecting the first protocol */
+                }
 	}
       }
     }
@@ -3373,8 +3452,20 @@ ndpi_struct->callback_buffer_tcp_payload[a].func(ndpi_struct, flow);
       if((flow->guessed_protocol_id != NDPI_PROTOCOL_UNKNOWN)
 	 && (ndpi_struct->proto_defaults[flow->guessed_protocol_id].func != NULL)
 	 && ((ndpi_struct->callback_buffer[flow->guessed_protocol_id].ndpi_selection_bitmask & NDPI_SELECTION_BITMASK_PROTOCOL_HAS_PAYLOAD) == 0))
+#if DBG_PRINT
+       printf("proto defauts no-payload\n");
+#endif
+#if TIME_STAT
+      start_tsc = rdtscll();
+#endif
+
 	ndpi_struct->proto_defaults[flow->guessed_protocol_id].func(ndpi_struct, flow),
 	  func = ndpi_struct->proto_defaults[flow->guessed_protocol_id].func;
+#if TIME_STAT
+
+        UpdateStatCounter(&stat_proto_nop_tcp, rdtscll() - start_tsc);
+#endif
+
     }
 
     for(a = 0; a < ndpi_struct->callback_buffer_size_tcp_no_payload; a++) {
@@ -3386,10 +3477,25 @@ ndpi_struct->callback_buffer_tcp_payload[a].func(ndpi_struct, flow);
 				 callback_buffer_tcp_no_payload[a].excluded_protocol_bitmask) == 0
 	 && NDPI_BITMASK_COMPARE(ndpi_struct->callback_buffer_tcp_no_payload[a].detection_bitmask,
 				 detection_bitmask) != 0) {
-	ndpi_struct->callback_buffer_tcp_no_payload[a].func(ndpi_struct, flow);
+#if DBG_PRINT
+        if(a==0)
+        printf("callback no-payload\n");
+#endif
 
-	if(flow->detected_protocol_stack[0] != NDPI_PROTOCOL_UNKNOWN)
+#if TIME_STAT
+      start_tsc = rdtscll();
+#endif
+	ndpi_struct->callback_buffer_tcp_no_payload[a].func(ndpi_struct, flow);
+#if TIME_STAT
+        //if (a == 0)
+        UpdateStatCounter(&stat_calb_nop_tcp, rdtscll() - start_tsc);
+#endif
+	if(flow->detected_protocol_stack[0] != NDPI_PROTOCOL_UNKNOWN){
+#if DBG_PRINT
+        printf("NO-PAYLOAD flow->detected_protocol_stack[%d] = %d\n",a, flow->detected_protocol_stack[a]);
+#endif
 	  break; /* Stop after detecting the first protocol */
+        }
       }
     }
   }
@@ -3405,7 +3511,15 @@ void check_ndpi_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 #endif   
         check_ndpi_tcp_flow_func(ndpi_struct, flow, ndpi_selection_packet);
 #if TIME_STAT
+
+#if ONLY_HTTP
+if (trigger)
 UpdateStatCounter(&stat_tcp_flow, rdtscll() - start_tsc);
+#else
+UpdateStatCounter(&stat_tcp_flow, rdtscll() - start_tsc);
+
+#endif
+
 #endif
 }
   else if(flow->packet.udp != NULL)
@@ -3590,11 +3704,18 @@ ndpi_protocol ndpi_detection_process_packet(struct ndpi_detection_module_struct 
     }
   }
 #if TIME_STAT
-unsigned long long start_tsc = rdtscll();
+volatile unsigned long long start_tsc = rdtscll();
 #endif
   check_ndpi_flow_func(ndpi_struct, flow, &ndpi_selection_packet);
 #if TIME_STAT
+#if ONLY_HTTP
+    if (trigger){
         UpdateStatCounter(&stat_flow, rdtscll() - start_tsc);
+        trigger = 0;
+        }
+#else
+        UpdateStatCounter(&stat_flow, rdtscll() - start_tsc);
+#endif
 #endif
   a = flow->packet.detected_protocol_stack[0];
   if(NDPI_COMPARE_PROTOCOL_TO_BITMASK(ndpi_struct->detection_bitmask, a) == 0)
